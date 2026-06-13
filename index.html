@@ -2451,9 +2451,14 @@ function renderLiveHero() {
   const cards = liveMatchesData.map(m => {
     // Minuto de juego
     let minuteStr = '';
-    if (m.minute !== null) {
+    if (m.minute === 'HT' || ['HALFTIME','HALF_TIME','PAUSED'].includes(m.status)) {
+      minuteStr = 'Entretiempo';
+    } else if (m.status === 'EXTRA_TIME') {
+      minuteStr = m.minute ? `ET ${m.minute}'` : 'Prórroga';
+    } else if (m.status === 'PENALTY_SHOOTOUT') {
+      minuteStr = 'Penales';
+    } else if (m.minute !== null) {
       minuteStr = m.injuryTime ? `${m.minute}+${m.injuryTime}'` : `${m.minute}'`;
-      if (m.status === 'PAUSED') minuteStr = 'HT';
     }
 
     // Goleadores agrupados por equipo (⚽ nombre min')
@@ -2739,24 +2744,42 @@ async function fetchApiResults(manual = false) {
     liveMatchIds.clear();
     liveMatchesData = [];
 
+    // Todos los estados posibles de la API para un partido en curso
+    const LIVE_STATUSES = ['IN_PLAY','PAUSED','LIVE','HALFTIME','HALF_TIME','EXTRA_TIME','PENALTY_SHOOTOUT','INTERRUPTED','SUSPENDED'];
+    const ALL_ACTIVE = [...LIVE_STATUSES, 'FINISHED'];
+
     matches.forEach(apiMatch => {
       const status = apiMatch.status;
       const score = apiMatch.score;
       const apiId = String(apiMatch.id);
 
-      if (['IN_PLAY','PAUSED','LIVE'].includes(status)) {
+      if (LIVE_STATUSES.includes(status)) {
         liveCount++;
         liveMatchIds.add(apiId);
-        // Guardar datos completos para el hero
+
+        // Score en vivo: currentPeriod > halfTime > fullTime (según la etapa)
+        const liveScore = score?.fullTime
+          ?? score?.halfTime
+          ?? { home: 0, away: 0 };
+        const scoreHome = liveScore?.home ?? 0;
+        const scoreAway = liveScore?.away ?? 0;
+
+        // Minuto de juego
+        let minute = apiMatch.minute ?? null;
+        let injuryTime = apiMatch.injuryTime ?? null;
+        // HALFTIME / HALF_TIME
+        if (['HALFTIME','HALF_TIME','PAUSED'].includes(status)) minute = 'HT';
+
         liveMatchesData.push({
           id: apiId,
           status,
-          minute: apiMatch.minute ?? null,
-          injuryTime: apiMatch.injuryTime ?? null,
+          minute,
+          injuryTime,
           home: resolveTeam(apiMatch.homeTeam?.shortName || apiMatch.homeTeam?.name || '') || apiMatch.homeTeam?.name || '?',
           away: resolveTeam(apiMatch.awayTeam?.shortName || apiMatch.awayTeam?.name || '') || apiMatch.awayTeam?.name || '?',
-          scoreHome: score?.fullTime?.home ?? 0,
-          scoreAway: score?.fullTime?.away ?? 0,
+          homeRaw: apiMatch.homeTeam?.name || '',
+          scoreHome,
+          scoreAway,
           goals: (apiMatch.goals || []).map(g => ({
             minute: g.minute,
             injuryTime: g.injuryTime,
@@ -2772,7 +2795,7 @@ async function fetchApiResults(manual = false) {
 
       if (!localMatch) return;
 
-      if (['IN_PLAY','PAUSED','LIVE','FINISHED'].includes(status)) {
+      if (ALL_ACTIVE.includes(status)) {
         const ft = score?.fullTime;
         if (ft && ft.home !== null && ft.away !== null) {
           // Actualizar nombre de equipos en knockout si aún dice "Por definir"
