@@ -2727,7 +2727,8 @@ async function fetchApiResults(manual = false) {
       ? {}  // el proxy ya agrega la key
       : { 'X-Auth-Token': key };
 
-    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/matches`, { headers });
+    const cacheBust = API_BASE.includes('corsproxy') ? `?_t=${Date.now()}` : '';
+    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/matches${cacheBust}`, { headers });
 
     if (!res.ok) {
       if (res.status === 400) throw new Error('Competición no disponible en tu plan gratuito. Verificá en football-data.org.');
@@ -2831,7 +2832,8 @@ async function fetchApiResults(manual = false) {
 
 async function fetchTopScorers(key) {
   try {
-    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=8`, {
+    const cbScorers = API_BASE.includes('corsproxy') ? `&_t=${Date.now()}` : '';
+    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=8${cbScorers}`, {
       headers: { 'X-Auth-Token': key }
     });
     if (!res.ok) return;
@@ -2873,7 +2875,15 @@ function initApi() {
   fetchApiResults();
   // Refresh every 60 seconds (respects free plan limit)
   if (apiInterval) clearInterval(apiInterval);
-  apiInterval = setInterval(() => fetchApiResults(), 60000);
+  // 30s cuando hay partidos en vivo, 60s en reposo
+  const interval = liveMatchIds.size > 0 ? 30000 : 60000;
+  apiInterval = setInterval(() => {
+    fetchApiResults();
+    // Re-ajustar el intervalo según si hay partidos en vivo
+    clearInterval(apiInterval);
+    const nextInterval = liveMatchIds.size > 0 ? 30000 : 60000;
+    apiInterval = setInterval(() => fetchApiResults(), nextInterval);
+  }, interval);
 }
 
 // ═══════════════════════════════════════════════
