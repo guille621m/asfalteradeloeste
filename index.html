@@ -2577,8 +2577,8 @@ const API_KEY_HARDCODED = 'fe914cfd3561412fb30b03bd7d90c3e7';
 const API_KEY_STORAGE = 'mundial2026_apikey';
 // Proxy local que evita SSL de Windows → ver mundial_server.py
 const API_BASE = window.location.hostname === 'localhost'
-  ? `http://localhost:8765/api`
-  : 'https://api.football-data.org/v4';
+  ? 'http://localhost:8765/api'
+  : 'https://corsproxy.io/?https://api.football-data.org/v4';
 const WC_ID = 2000; // ID fijo del Mundial en football-data.org
 let apiInterval = null;
 
