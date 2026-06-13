@@ -2583,7 +2583,7 @@ const API_KEY_STORAGE = 'mundial2026_apikey';
 // Proxy local que evita SSL de Windows → ver mundial_server.py
 const API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:8765/api'
-  : 'https://corsproxy.io/?https://api.football-data.org/v4';
+  : 'https://sweet-grass-b31e.guillermodruze.workers.dev';
 const WC_ID = 2000; // ID fijo del Mundial en football-data.org
 let apiInterval = null;
 
@@ -2727,8 +2727,7 @@ async function fetchApiResults(manual = false) {
       ? {}  // el proxy ya agrega la key
       : { 'X-Auth-Token': key };
 
-    const cacheBust = API_BASE.includes('corsproxy') ? `?_t=${Date.now()}` : '';
-    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/matches${cacheBust}`, { headers });
+    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/matches`, { headers });
 
     if (!res.ok) {
       if (res.status === 400) throw new Error('Competición no disponible en tu plan gratuito. Verificá en football-data.org.');
@@ -2832,8 +2831,7 @@ async function fetchApiResults(manual = false) {
 
 async function fetchTopScorers(key) {
   try {
-    const cbScorers = API_BASE.includes('corsproxy') ? `&_t=${Date.now()}` : '';
-    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=8${cbScorers}`, {
+    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=8`, {
       headers: { 'X-Auth-Token': key }
     });
     if (!res.ok) return;
