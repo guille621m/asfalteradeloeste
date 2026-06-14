@@ -2043,6 +2043,59 @@ const knockoutRounds = [
 let adminMode = false;
 const liveMatchIds = new Set();   // IDs de partidos en curso
 let liveMatchesData = [];          // Datos completos de partidos en vivo para el hero
+
+// Timestamps reales de inicio de cada tiempo, guardados en localStorage
+// { [matchId]: { t1: timestamp, t2: timestamp, prevStatus: string } }
+function getLiveTimestamps() {
+  try { return JSON.parse(localStorage.getItem('liveTimestamps') || '{}'); } catch { return {}; }
+}
+function saveLiveTimestamps(obj) {
+  try { localStorage.setItem('liveTimestamps', JSON.stringify(obj)); } catch {}
+}
+function calcLiveMinute(matchId, status, utcDate, isSecondHalf) {
+  const ts = getLiveTimestamps();
+  const m = ts[matchId] || {};
+  const now = Date.now();
+  if (['HALFTIME','HALF_TIME','PAUSED'].includes(status)) return 'HT';
+  if (status === 'PENALTY_SHOOTOUT') return 'Pen';
+  if (status === 'EXTRA_TIME') {
+    const base = m.t2 || m.t1;
+    if (!base) return null;
+    return Math.min(90 + Math.floor((now - base) / 60000), 120);
+  }
+  // IN_PLAY con timestamps reales
+  if (m.t2) return Math.min(45 + Math.floor((now - m.t2) / 60000), 90);
+  if (m.t1 && !isSecondHalf) return Math.min(Math.floor((now - m.t1) / 60000) + 1, 45);
+  // fallback: partido ya en curso al cargar
+  if (utcDate) {
+    const kickoff = new Date(utcDate).getTime();
+    const elapsed = Math.floor((now - kickoff) / 60000);
+    if (isSecondHalf) {
+      // Sabemos que es 2do tiempo: 45' jugados + HT estimado en 15' + tiempo desde kickoff - 60
+      return Math.min(Math.max(45 + elapsed - 60, 46), 90);
+    }
+    return Math.min(Math.max(elapsed, 1), 45);
+  }
+  return null;
+}
+function updateLiveTimestamp(matchId, status, isSecondHalf) {
+  const ts = getLiveTimestamps();
+  if (!ts[matchId]) ts[matchId] = {};
+  const m = ts[matchId];
+  const prev = m.prevStatus || '';
+  const wasHT = ['HALFTIME','HALF_TIME','PAUSED'].includes(prev);
+  // Primer tiempo: primera vez IN_PLAY y no es segundo tiempo
+  if (status === 'IN_PLAY' && !m.t1 && !isSecondHalf) m.t1 = Date.now();
+  // Segundo tiempo: venía de HT → timestamp real
+  if (status === 'IN_PLAY' && wasHT && !m.t2) m.t2 = Date.now();
+  // Segundo tiempo detectado al cargar (score.halfTime tiene valores) pero sin t2
+  if (status === 'IN_PLAY' && isSecondHalf && !m.t2 && !wasHT) {
+    // No tenemos el momento exacto, se usa fallback en calcLiveMinute
+  }
+  m.prevStatus = status;
+  ts[matchId] = m;
+  saveLiveTimestamps(ts);
+}
 let currentMatchId = null;
 const STORAGE_KEY = 'mundial2026_scores';
 
@@ -2813,6 +2866,15 @@ async function fetchApiResults(manual = false) {
     liveMatchIds.clear();
     liveMatchesData = [];
 
+    // Limpiar timestamps de partidos que ya terminaron
+    const finishedInThisFetch = new Set();
+    matches.forEach(am => { if (am.status === 'FINISHED') finishedInThisFetch.add(String(am.id)); });
+    if (finishedInThisFetch.size) {
+      const ts = getLiveTimestamps();
+      finishedInThisFetch.forEach(id => delete ts[id]);
+      saveLiveTimestamps(ts);
+    }
+
     // Todos los estados posibles de la API para un partido en curso
     const LIVE_STATUSES = ['IN_PLAY','PAUSED','LIVE','HALFTIME','HALF_TIME','EXTRA_TIME','PENALTY_SHOOTOUT','INTERRUPTED','SUSPENDED'];
     const ALL_ACTIVE = [...LIVE_STATUSES, 'FINISHED'];
@@ -2836,25 +2898,13 @@ async function fetchApiResults(manual = false) {
         const scoreHome = liveScore?.home ?? 0;
         const scoreAway = liveScore?.away ?? 0;
 
-        // Minuto de juego: la API free no lo devuelve → calculamos desde el kickoff
-        const kickoffUtc = apiMatch.utcDate ? new Date(apiMatch.utcDate) : null;
-        let minute = null;
+        // Minuto de juego: calculado desde timestamps reales de inicio de cada tiempo
+        // Si score.halfTime tiene valores → ya pasó el entretiempo → segundo tiempo
+        const htScore = score?.halfTime;
+        const isSecondHalf = htScore && htScore.home !== null && htScore.away !== null;
+        updateLiveTimestamp(apiId, status, isSecondHalf);
+        const minute = calcLiveMinute(apiId, status, apiMatch.utcDate, isSecondHalf);
         const injuryTime = null;
-        if (['HALFTIME','HALF_TIME','PAUSED'].includes(status)) {
-          minute = 'HT';
-        } else if (kickoffUtc) {
-          const elapsed = Math.floor((Date.now() - kickoffUtc.getTime()) / 60000);
-          if (status === 'EXTRA_TIME') {
-            minute = Math.min(elapsed - 90, 30); // hasta 30' de prórroga
-          } else if (elapsed > 45) {
-            // segundo tiempo: restamos ~15min de entretiempo
-            minute = Math.min(elapsed - 15, 90);
-          } else {
-            minute = Math.min(elapsed, 45);
-          }
-          // nunca mostrar 0' al inicio
-          if (minute <= 0) minute = 1;
-        }
 
         liveMatchesData.push({
           id: apiId,
