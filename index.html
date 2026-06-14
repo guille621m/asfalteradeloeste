@@ -547,13 +547,36 @@ nav {
   border-color: rgba(245,158,11,0.4);
   color: var(--gold);
 }
-.matches-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.matches-list { display: flex; flex-direction: column; gap: 0; }
+
+/* ── Collapsible matchday ── */
+details.matchday-group { margin-bottom: 0.5rem; }
+details.matchday-group > summary { list-style: none; -webkit-appearance: none; }
+details.matchday-group > summary::-webkit-details-marker { display: none; }
+
 .matchday-header {
   font-size: 0.75rem; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: 2px;
-  padding: 0.5rem 0; margin-top: 0.5rem;
+  padding: 0.6rem 0.5rem; margin-top: 0.25rem;
   border-bottom: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+  border-radius: 8px 8px 0 0;
+  transition: background 0.15s;
 }
+.matchday-header:hover { background: rgba(255,255,255,0.03); }
+.matchday-count {
+  font-size: 0.65rem; color: var(--muted); font-weight: 500;
+  background: rgba(255,255,255,0.06); border-radius: 999px;
+  padding: 0.1rem 0.5rem; letter-spacing: 0; text-transform: none;
+  margin-left: 0.5rem;
+}
+.matchday-chevron {
+  color: var(--muted); flex-shrink: 0; margin-left: auto;
+  transition: transform 0.25s ease;
+}
+details[open] > summary .matchday-chevron { transform: rotate(180deg); }
+.matchday-matches { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.5rem 0 0.25rem; }
 .match-card {
   background: var(--glass);
   border: 1px solid var(--glass-border);
@@ -716,6 +739,19 @@ nav {
 }
 .live-hero-goal .gmin { color: var(--gold); font-family: 'Fira Code', monospace; font-size: 0.65rem; min-width: 2.5ch; }
 .live-hero-goal .gname { color: rgba(255,255,255,0.75); font-weight: 600; }
+
+/* ── Goleadores inline en tarjeta en vivo ── */
+.live-goals-inline {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  padding: 0.4rem 0 0.1rem;
+  border-top: 1px solid rgba(239,68,68,0.15);
+  margin-top: 0.35rem;
+}
+.live-goal-item {
+  font-size: 0.68rem; color: rgba(255,255,255,0.65);
+  display: flex; align-items: center; gap: 3px;
+}
+.live-goal-min { color: var(--gold); font-family: 'Fira Code', monospace; font-size: 0.6rem; }
 
 /* ──────────── CAMPEÓN BANNER ──────────── */
 #championBanner {
@@ -1420,8 +1456,14 @@ footer strong { color: var(--text); }
     </div>
     Tabla de Posiciones
   </div>
-  <p class="section-sub">Clasificación actualizada por grupo. Los dos primeros y los mejores terceros avanzan a los 16avos de Final.</p>
-  <div class="groups-grid" id="groupsGrid"></div>
+  <details open id="gruposDetails">
+    <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:0.5rem;color:var(--muted);font-size:0.78rem;font-weight:600;margin-bottom:1rem;user-select:none;width:fit-content">
+      <svg id="gruposChevron" style="transition:transform 0.25s" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      <span id="gruposToggleLabel">Ocultar tabla</span>
+    </summary>
+    <p class="section-sub" style="margin-top:0">Clasificación actualizada por grupo. Los dos primeros y los mejores terceros avanzan a los 16avos de Final.</p>
+    <div class="groups-grid" id="groupsGrid"></div>
+  </details>
 </section>
 
 <div class="separator"></div>
@@ -2090,93 +2132,130 @@ function renderFilterBtns() {
 }
 function setFilter(v) { activeFilter = v; renderFilterBtns(); renderMatches(); }
 
+function matchCardHtml(m, sc, isLive, badgeLabel) {
+  const hasScore = sc !== undefined;
+  const liveData = liveMatchesData.find(l => l.id === m.id);
+  const isKO = !!m.round;
+  const arg = isKO ? toARG(m.date, m.time) : { date: m.argDate, time: m.argTime };
+  const clickArgs = isKO ? `'${m.id}','${m.t1}','${m.t2}'` : `'${m.id}'`;
+
+  // Minuto en vivo
+  let liveMinute = '';
+  if (isLive && liveData) {
+    if (liveData.minute === 'HT' || ['HALFTIME','HALF_TIME','PAUSED'].includes(liveData.status)) liveMinute = 'ET';
+    else if (liveData.status === 'EXTRA_TIME') liveMinute = `ET ${liveData.minute || ''}\'`;
+    else if (liveData.status === 'PENALTY_SHOOTOUT') liveMinute = 'Pen.';
+    else if (liveData.minute) liveMinute = `${liveData.minute}${liveData.injuryTime ? '+'+liveData.injuryTime : ''}\'`;
+  }
+
+  // Goleadores en vivo
+  let goalsHtml = '';
+  if (isLive && liveData?.goals?.length) {
+    const homeGoals = liveData.goals.filter(g => {
+      // Intentar identificar por nombre de equipo
+      return g.team && (g.team.includes(liveData.homeRaw) || liveData.home.toLowerCase().includes(g.team.toLowerCase().split(' ')[0]));
+    });
+    const awayGoals = liveData.goals.filter(g => !homeGoals.includes(g));
+    const fmt = (goals) => goals.map(g => {
+      const min = g.injuryTime ? `${g.minute}+${g.injuryTime}'` : `${g.minute}'`;
+      const name = (g.scorer || '').split(' ').pop();
+      return `<span>${name} <span style="color:var(--muted);font-size:0.6rem">${min}</span></span>`;
+    }).join(' ');
+    if (liveData.goals.length) {
+      goalsHtml = `<div class="live-goals-inline">
+        ${liveData.goals.map(g => {
+          const min = g.injuryTime ? `${g.minute}+${g.injuryTime}'` : `${g.minute}'`;
+          const name = (g.scorer || '').split(' ').pop();
+          return `<span class="live-goal-item">⚽ ${name} <span class="live-goal-min">${min}</span></span>`;
+        }).join('')}
+      </div>`;
+    }
+  }
+
+  return `<div class="match-card${hasScore?' has-score':''}${isLive?' is-live':''}" onclick="handleMatchClick(${clickArgs})">
+    <div class="match-meta">
+      <div class="match-date">${new Date((arg.date||m.date)+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})}</div>
+      <div class="match-time">${(arg.time||m.time).slice(0,5)} hs</div>
+      <div class="match-venue">${m.venue.split(',')[0]}</div>
+      ${isLive ? `<div class="live-match-badge"><span class="dot"></span>EN VIVO${liveMinute ? ` · ${liveMinute}` : ''}</div>` : ''}
+    </div>
+    <div class="match-teams">
+      <div class="match-team">
+        <div class="match-team-flag">${flagImg(m.t1,'lg')}</div>
+        <div class="match-team-name">${m.t1}</div>
+      </div>
+      <div class="score-block">
+        ${hasScore ? `<span class="score-num">${sc.s1}</span><span class="score-sep">–</span><span class="score-num">${sc.s2}</span>` : `<span class="score-vs">vs</span>`}
+      </div>
+      <div class="match-team">
+        <div class="match-team-flag">${flagImg(m.t2,'lg')}</div>
+        <div class="match-team-name">${m.t2}</div>
+      </div>
+    </div>
+    ${goalsHtml}
+    <div class="match-group-badge">${badgeLabel}</div>
+    <div class="edit-hint">✎ editar</div>
+  </div>`;
+}
+
+const chevronSvg = `<svg class="matchday-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>`;
+
 function renderMatches() {
   const list = document.getElementById('matchesList');
   const scores = getScores();
   let html = '';
+
+  // Fecha de hoy en ARG
+  const nowArg = new Date(Date.now() - 3 * 3600000);
+  const todayARG = nowArg.toISOString().slice(0, 10);
 
   const showGroup = activeFilter === 'all' || Object.keys(GROUPS).includes(activeFilter);
   const showKO = activeFilter === 'all' || ['r32','qf','sf','final'].includes(activeFilter);
 
   if (showGroup) {
     const filtered = activeFilter === 'all' ? groupMatches : groupMatches.filter(m => m.group === activeFilter);
-    // Group by matchday
     const byDay = {};
     filtered.forEach(m => {
       const arg = toARG(m.date, m.time);
-      const key = arg.date;
-      if (!byDay[key]) byDay[key] = [];
-      byDay[key].push({ ...m, argDate: arg.date, argTime: arg.time });
+      if (!byDay[arg.date]) byDay[arg.date] = [];
+      byDay[arg.date].push({ ...m, argDate: arg.date, argTime: arg.time });
     });
     Object.keys(byDay).sort().forEach(day => {
       const d = new Date(day + 'T12:00:00');
-      html += `<div class="matchday-header">${d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div>`;
+      const dayLabel = d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+      const count = byDay[day].length;
+      const hasLive = byDay[day].some(m => liveMatchIds.has(m.id));
+      const isToday = day === todayARG;
+      const openAttr = (hasLive || isToday) ? 'open' : '';
+      html += `<details class="matchday-group" ${openAttr}>
+        <summary class="matchday-header">
+          <span>${dayLabel} <span class="matchday-count">${count} partido${count>1?'s':''}</span></span>
+          ${chevronSvg}
+        </summary>
+        <div class="matchday-matches">`;
       byDay[day].forEach(m => {
-        const sc = scores[m.id];
-        const hasScore = sc !== undefined;
-        const isLive = liveMatchIds.has(m.id);
-        html += `<div class="match-card${hasScore?' has-score':''}${isLive?' is-live':''}" onclick="handleMatchClick('${m.id}')">
-          <div class="match-meta">
-            <div class="match-date">${new Date(m.argDate+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})}</div>
-            <div class="match-time">${m.argTime} hs</div>
-            <div class="match-venue">${m.venue.split(',')[0]}</div>
-            ${isLive ? `<div class="live-match-badge"><span class="dot"></span>EN VIVO</div>` : ''}
-          </div>
-          <div class="match-teams">
-            <div class="match-team">
-              <div class="match-team-flag">${flagImg(m.t1,'lg')}</div>
-              <div class="match-team-name">${m.t1}</div>
-            </div>
-            <div class="score-block">
-              ${hasScore
-                ? `<span class="score-num">${sc.s1}</span><span class="score-sep">–</span><span class="score-num">${sc.s2}</span>`
-                : `<span class="score-vs">vs</span>`}
-            </div>
-            <div class="match-team">
-              <div class="match-team-flag">${flagImg(m.t2,'lg')}</div>
-              <div class="match-team-name">${m.t2}</div>
-            </div>
-          </div>
-          <div class="match-group-badge">GRP ${m.group}</div>
-          <div class="edit-hint">✎ editar</div>
-        </div>`;
+        html += matchCardHtml(m, scores[m.id], liveMatchIds.has(m.id), `GRP ${m.group}`);
       });
+      html += `</div></details>`;
     });
   }
 
   if (showKO) {
-    const rFilter = ['r32','qf','sf','final'];
     knockoutRounds.filter(r => activeFilter === 'all' || r.key === activeFilter).forEach(round => {
-      html += `<div class="matchday-header">${round.name}</div>`;
+      const hasLive = round.matches.some(m => liveMatchIds.has(m.id));
+      const hasStarted = round.matches.some(m => scores[m.id] !== undefined || liveMatchIds.has(m.id));
+      const openAttr = (hasLive || hasStarted) ? 'open' : '';
+      const count = round.matches.length;
+      html += `<details class="matchday-group" ${openAttr}>
+        <summary class="matchday-header">
+          <span>${round.name} <span class="matchday-count">${count} partido${count>1?'s':''}</span></span>
+          ${chevronSvg}
+        </summary>
+        <div class="matchday-matches">`;
       round.matches.forEach(m => {
-        const sc = scores[m.id];
-        const hasScore = sc !== undefined;
-        const isLive = liveMatchIds.has(m.id);
-        const arg = toARG(m.date, m.time);
-        html += `<div class="match-card${hasScore?' has-score':''}${isLive?' is-live':''}" onclick="handleMatchClick('${m.id}','${m.t1}','${m.t2}')">
-          <div class="match-meta">
-            <div class="match-date">${new Date(arg.date+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})}</div>
-            <div class="match-time">${arg.time} hs</div>
-            <div class="match-venue">${m.venue.split(',')[0]}</div>
-            ${isLive ? `<div class="live-match-badge"><span class="dot"></span>EN VIVO</div>` : ''}
-          </div>
-          <div class="match-teams">
-            <div class="match-team">
-              <div class="match-team-flag">${flagImg(m.t1,'lg')}</div>
-              <div class="match-team-name">${m.t1}</div>
-            </div>
-            <div class="score-block">
-              ${hasScore ? `<span class="score-num">${sc.s1}</span><span class="score-sep">–</span><span class="score-num">${sc.s2}</span>` : `<span class="score-vs">vs</span>`}
-            </div>
-            <div class="match-team">
-              <div class="match-team-flag">${flagImg(m.t2,'lg')}</div>
-              <div class="match-team-name">${m.t2}</div>
-            </div>
-          </div>
-          <div class="match-group-badge">${round.name.split(' ')[0].toUpperCase()}</div>
-          <div class="edit-hint">✎ editar</div>
-        </div>`;
+        html += matchCardHtml(m, scores[m.id], liveMatchIds.has(m.id), round.name.split(' ')[0].toUpperCase());
       });
+      html += `</div></details>`;
     });
   }
 
@@ -2905,6 +2984,17 @@ document.addEventListener('DOMContentLoaded', () => {
       { threshold: 0.05 }
     );
     observer.observe(serviciosSection);
+  }
+
+  // Toggle label para grupos
+  const gruposDetails = document.getElementById('gruposDetails');
+  const gruposLabel = document.getElementById('gruposToggleLabel');
+  const gruposChevron = document.getElementById('gruposChevron');
+  if (gruposDetails && gruposLabel) {
+    gruposDetails.addEventListener('toggle', () => {
+      gruposLabel.textContent = gruposDetails.open ? 'Ocultar tabla' : 'Ver tabla';
+      gruposChevron.style.transform = gruposDetails.open ? '' : 'rotate(-90deg)';
+    });
   }
 
   // Guardar la key hardcodeada en localStorage también
