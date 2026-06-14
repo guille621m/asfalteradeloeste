@@ -739,6 +739,7 @@ details[open] > summary .matchday-chevron { transform: rotate(180deg); }
 }
 .live-hero-goal .gmin { color: var(--gold); font-family: 'Fira Code', monospace; font-size: 0.65rem; min-width: 2.5ch; }
 .live-hero-goal .gname { color: rgba(255,255,255,0.75); font-weight: 600; }
+.live-hero-goal .gteam { font-size: 0.6rem; color: rgba(255,255,255,0.35); margin-left: 0.2rem; }
 
 /* ── Goleadores inline en tarjeta en vivo ── */
 .live-goals-inline {
@@ -1456,10 +1457,10 @@ footer strong { color: var(--text); }
     </div>
     Tabla de Posiciones
   </div>
-  <details open id="gruposDetails">
+  <details id="gruposDetails">
     <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:0.5rem;color:var(--muted);font-size:0.78rem;font-weight:600;margin-bottom:1rem;user-select:none;width:fit-content">
-      <svg id="gruposChevron" style="transition:transform 0.25s" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-      <span id="gruposToggleLabel">Ocultar tabla</span>
+      <svg id="gruposChevron" style="transition:transform 0.25s;transform:rotate(-90deg)" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      <span id="gruposToggleLabel">Ver tablas</span>
     </summary>
     <p class="section-sub" style="margin-top:0">Clasificación actualizada por grupo. Los dos primeros y los mejores terceros avanzan a los 16avos de Final.</p>
     <div class="groups-grid" id="groupsGrid"></div>
@@ -1477,7 +1478,7 @@ footer strong { color: var(--text); }
     Fixture Completo
   </div>
   <p class="section-sub">Todos los partidos del Mundial. <span id="adminHint" style="color:var(--green);display:none">Clic en un partido para ingresar resultado.</span></p>
-  <div class="fixture-controls" id="filterBtns"></div>
+  <div class="fixture-controls" id="filterBtns" style="display:none"></div>
   <div class="matches-list" id="matchesList"></div>
 </section>
 
@@ -2378,13 +2379,16 @@ function renderTodayMatches(nextMatches) {
   if (!todayPending.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
   list.innerHTML = todayPending.map(m => `
-    <div style="display:flex;align-items:center;justify-content:center;gap:0.45rem;font-size:0.76rem;padding:0.28rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:7px;">
-      <span style="font-family:'Fira Code',monospace;color:var(--gold);font-weight:700;font-size:0.7rem;min-width:36px;text-align:right;">${m.argTime}</span>
-      ${flagImg(m.t1,'sm')}
-      <span style="color:var(--text);font-weight:500;">${TEAMS[m.t1]?.short || m.t1}</span>
-      <span style="color:var(--muted);font-size:0.68rem;margin:0 3px">vs</span>
-      <span style="color:var(--text);font-weight:500;">${TEAMS[m.t2]?.short || m.t2}</span>
-      ${flagImg(m.t2,'sm')}
+    <div style="display:grid;grid-template-columns:42px 1fr 42px;align-items:center;font-size:0.76rem;padding:0.28rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:7px;">
+      <span style="font-family:'Fira Code',monospace;color:var(--gold);font-weight:700;font-size:0.7rem;">${m.argTime}</span>
+      <div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;">
+        ${flagImg(m.t1,'sm')}
+        <span style="color:var(--text);font-weight:500;">${m.t1}</span>
+        <span style="color:var(--muted);font-size:0.68rem;margin:0 2px">vs</span>
+        <span style="color:var(--text);font-weight:500;">${m.t2}</span>
+        ${flagImg(m.t2,'sm')}
+      </div>
+      <span></span>
     </div>
   `).join('');
 }
@@ -2540,22 +2544,8 @@ function renderLiveHero() {
       minuteStr = m.injuryTime ? `${m.minute}+${m.injuryTime}'` : `${m.minute}'`;
     }
 
-    // Goleadores agrupados por equipo (⚽ nombre min')
-    const homeGoals = m.goals.filter(g => {
-      // Intentar identificar si el gol es del local por nombre de equipo
-      return true; // la API nos da team.name, lo mostramos en lista general
-    });
-
-    const goalLines = m.goals.map(g => {
-      const minStr = g.injuryTime ? `${g.minute}+${g.injuryTime}'` : `${g.minute}'`;
-      // Nombre corto del goleador (último apellido)
-      const shortName = g.scorer.split(' ').slice(-1)[0] || g.scorer;
-      return `<div class="live-hero-goal">
-        <span class="gmin">${minStr}</span>
-        <span>⚽</span>
-        <span class="gname">${shortName}</span>
-      </div>`;
-    }).join('');
+    // Goles: API free no devuelve goleadores, mostramos score solo
+    const goalLines = '';
 
     return `<div class="live-hero-card">
       <div class="live-hero-card-header">
@@ -2673,7 +2663,7 @@ const API_TEAM_MAP = {
   'KOR':'Corea del Sur','South Korea':'Corea del Sur','Korea Republic':'Corea del Sur',
   'CZE':'Chequia',      'Czechia':'Chequia','Czech Republic':'Chequia',
   'CAN':'Canadá',       'Canada':'Canadá',
-  'BIH':'Bosnia-Herzegovina','Bosnia-Herzegovina':'Bosnia-Herzegovina','Bosnia and Herzegovina':'Bosnia-Herzegovina',
+  'BIH':'Bosnia-Herzegovina','Bosnia-Herzegovina':'Bosnia-Herzegovina','Bosnia and Herzegovina':'Bosnia-Herzegovina','Bosnia-H.':'Bosnia-Herzegovina','Bosnia & Herzegovina':'Bosnia-Herzegovina',
   'QAT':'Qatar',        'Qatar':'Qatar',
   'SUI':'Suiza',        'Switzerland':'Suiza',
   'BRA':'Brasil',       'Brazil':'Brasil',
@@ -2836,18 +2826,35 @@ async function fetchApiResults(manual = false) {
         liveCount++;
         liveMatchIds.add(apiId);
 
-        // Score en vivo: currentPeriod > halfTime > fullTime (según la etapa)
-        const liveScore = score?.fullTime
-          ?? score?.halfTime
-          ?? { home: 0, away: 0 };
+        // Score en vivo: fullTime es el marcador actualizado durante el partido
+        // halfTime solo se usa como fallback si fullTime es null
+        const ft = score?.fullTime;
+        const ht = score?.halfTime;
+        const liveScore = (ft?.home !== null && ft?.home !== undefined) ? ft
+          : (ht?.home !== null && ht?.home !== undefined) ? ht
+          : { home: 0, away: 0 };
         const scoreHome = liveScore?.home ?? 0;
         const scoreAway = liveScore?.away ?? 0;
 
-        // Minuto de juego
-        let minute = apiMatch.minute ?? null;
-        let injuryTime = apiMatch.injuryTime ?? null;
-        // HALFTIME / HALF_TIME
-        if (['HALFTIME','HALF_TIME','PAUSED'].includes(status)) minute = 'HT';
+        // Minuto de juego: la API free no lo devuelve → calculamos desde el kickoff
+        const kickoffUtc = apiMatch.utcDate ? new Date(apiMatch.utcDate) : null;
+        let minute = null;
+        const injuryTime = null;
+        if (['HALFTIME','HALF_TIME','PAUSED'].includes(status)) {
+          minute = 'HT';
+        } else if (kickoffUtc) {
+          const elapsed = Math.floor((Date.now() - kickoffUtc.getTime()) / 60000);
+          if (status === 'EXTRA_TIME') {
+            minute = Math.min(elapsed - 90, 30); // hasta 30' de prórroga
+          } else if (elapsed > 45) {
+            // segundo tiempo: restamos ~15min de entretiempo
+            minute = Math.min(elapsed - 15, 90);
+          } else {
+            minute = Math.min(elapsed, 45);
+          }
+          // nunca mostrar 0' al inicio
+          if (minute <= 0) minute = 1;
+        }
 
         liveMatchesData.push({
           id: apiId,
@@ -2859,6 +2866,7 @@ async function fetchApiResults(manual = false) {
           homeRaw: apiMatch.homeTeam?.name || '',
           scoreHome,
           scoreAway,
+          // goals ya viene en el endpoint de competición
           goals: (apiMatch.goals || []).map(g => ({
             minute: g.minute,
             injuryTime: g.injuryTime,
@@ -2907,6 +2915,7 @@ async function fetchApiResults(manual = false) {
     if (manual) icon.classList.remove('spinning');
   }
 }
+
 
 async function fetchTopScorers(key) {
   try {
@@ -2992,7 +3001,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const gruposChevron = document.getElementById('gruposChevron');
   if (gruposDetails && gruposLabel) {
     gruposDetails.addEventListener('toggle', () => {
-      gruposLabel.textContent = gruposDetails.open ? 'Ocultar tabla' : 'Ver tabla';
+      gruposLabel.textContent = gruposDetails.open ? 'Ocultar tablas' : 'Ver tablas';
       gruposChevron.style.transform = gruposDetails.open ? '' : 'rotate(-90deg)';
     });
   }
