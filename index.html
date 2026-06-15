@@ -1688,6 +1688,7 @@ footer strong { color: var(--text); }
   </div>
   <p class="section-sub">Los máximos anotadores del torneo. Se actualiza con cada resultado ingresado.</p>
   <div class="scorers-grid" id="scorersGrid"></div>
+  <p style="text-align:center;font-size:0.7rem;color:var(--muted);margin-top:1rem;opacity:0.7">⏱ Los datos de goleadores pueden tener demora respecto a los partidos del día.</p>
 </section>
 
 <!-- FOOTER -->
@@ -2084,13 +2085,16 @@ function updateLiveTimestamp(matchId, status, isSecondHalf) {
   const m = ts[matchId];
   const prev = m.prevStatus || '';
   const wasHT = ['HALFTIME','HALF_TIME','PAUSED'].includes(prev);
-  // Primer tiempo: primera vez IN_PLAY y no es segundo tiempo
-  if (status === 'IN_PLAY' && !m.t1 && !isSecondHalf) m.t1 = Date.now();
-  // Segundo tiempo: venía de HT → timestamp real
-  if (status === 'IN_PLAY' && wasHT && !m.t2) m.t2 = Date.now();
-  // Segundo tiempo detectado al cargar (score.halfTime tiene valores) pero sin t2
-  if (status === 'IN_PLAY' && isSecondHalf && !m.t2 && !wasHT) {
-    // No tenemos el momento exacto, se usa fallback en calcLiveMinute
+  const wasScheduled = prev === 'TIMED' || prev === 'SCHEDULED';
+
+  // t1 solo cuando detectamos la transición SCHEDULED/TIMED → IN_PLAY
+  // Si prev está vacío el partido ya estaba iniciado → usamos fallback utcDate
+  if (status === 'IN_PLAY' && !m.t1 && !isSecondHalf && wasScheduled) {
+    m.t1 = Date.now();
+  }
+  // t2 cuando venía de entretiempo → timestamp preciso
+  if (status === 'IN_PLAY' && wasHT && !m.t2) {
+    m.t2 = Date.now();
   }
   m.prevStatus = status;
   ts[matchId] = m;
@@ -2164,7 +2168,7 @@ function renderGroups() {
             <td><div class="team-cell">
               <span class="pos-badge ${posClass[i]}">${i+1}</span>
               ${flagImg(r.name,'sm')}
-              <span class="team-name-short">${TEAMS[r.name]?.short || r.name}</span>
+              <span class="team-name-short">${r.name}</span>
             </div></td>
             <td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
             <td>${r.gf}</td><td>${r.ga}</td><td>${r.gd > 0?'+':''}${r.gd}</td>
@@ -2275,6 +2279,7 @@ function renderMatches() {
       byDay[arg.date].push({ ...m, argDate: arg.date, argTime: arg.time });
     });
     Object.keys(byDay).sort().forEach(day => {
+      byDay[day].sort((a, b) => a.argTime.localeCompare(b.argTime));
       const d = new Date(day + 'T12:00:00');
       const dayLabel = d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
       const count = byDay[day].length;
@@ -2969,7 +2974,7 @@ async function fetchApiResults(manual = false) {
 
 async function fetchTopScorers(key) {
   try {
-    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=8`, {
+    const res = await fetch(`${API_BASE}/competitions/${WC_ID}/scorers?limit=10`, {
       headers: { 'X-Auth-Token': key }
     });
     if (!res.ok) return;
